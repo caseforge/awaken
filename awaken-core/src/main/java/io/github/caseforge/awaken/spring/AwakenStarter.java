@@ -1,6 +1,7 @@
 package io.github.caseforge.awaken.spring;
 
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -191,7 +192,7 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
         try {
             inputStream = resource.getInputStream();
             Properties props = new Properties();
-            props.load(inputStream);
+            props.load(new InputStreamReader(inputStream, "utf-8"));
 
             Set<String> exceptionTypeNames = props.stringPropertyNames();
 
