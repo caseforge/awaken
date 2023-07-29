@@ -75,6 +75,8 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
 
             SpringResourceProvider resourceProvider = new SpringResourceProvider(ctx);
 
+            registStaticValidator(ctx);
+            
             registValidatorAndProvider(ctx);
 
             // 注册invoker
@@ -99,6 +101,38 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
             LOGGER.error("the application encountered an error after startup ", e);
             throw new RuntimeException(e);
         }
+    }
+
+    protected void registStaticValidator(ApplicationContext ctx) throws Exception {
+        Resource[] resources = ctx.getResources("classpath*:validators.properties");
+        for (Resource resource : resources) {
+            if (resource.exists()) {
+                registStaticValidator(resource);
+            }
+        }
+    }
+    
+    protected void registStaticValidator(Resource resource) throws Exception {
+        InputStream inputStream = null;
+        try {
+            inputStream = resource.getInputStream();
+            Properties props = new Properties();
+            props.load(new InputStreamReader(inputStream, "utf-8"));
+
+            Set<String> validatorNames = props.stringPropertyNames();
+
+            for (String validatorName : validatorNames) {
+                BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(props.getProperty(validatorName));
+                builder.setScope(BeanDefinition.SCOPE_PROTOTYPE);
+                this.registry.registerBeanDefinition(validatorName, builder.getBeanDefinition());
+            }
+        } finally {
+            if (inputStream != null) {
+                inputStream.close();
+            }
+        }
+        
+        
     }
 
     protected void registValidatorAndProvider(ApplicationContext ctx) throws Exception {
@@ -187,7 +221,7 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
         }
     }
 
-    private void initFaultHandler(Resource resource) throws Exception {
+    protected void initFaultHandler(Resource resource) throws Exception {
         InputStream inputStream = null;
         try {
             inputStream = resource.getInputStream();

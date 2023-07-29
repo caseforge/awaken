@@ -119,7 +119,7 @@ public class Coder extends ClassLoader {
                 throw new ClassNotFoundException(name);
             }
             
-            String dumpPath = System.getProperty("coder.dump.path");
+            String dumpPath = System.getProperty("awaken.dump.path");
             if (dumpPath != null) {
                 FileOutputStream fos = null;
                 try {
