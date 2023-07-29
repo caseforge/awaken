@@ -35,19 +35,19 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AwakenStarter.class);
 
-    private Coder coder = new Coder();
+    protected Coder coder = new Coder();
 
-    private String[] basePackages;
+    protected String[] basePackages;
 
-    private BeanDefinitionRegistry registry;
+    protected BeanDefinitionRegistry registry;
 
-    private Map<String, Method> svcMethodMap = new HashMap<String, Method>();
+    protected Map<String, Method> svcMethodMap = new HashMap<String, Method>();
 
-    private Map<String, Invoker> invokerMap = new HashMap<String, Invoker>();
+    protected Map<String, Invoker> invokerMap = new HashMap<String, Invoker>();
 
-    private Map<String, Integer> faultCodeMap = new HashMap<String, Integer>();
+    protected Map<String, Integer> faultCodeMap = new HashMap<String, Integer>();
 
-    private Map<String, String> faultMsgMap = new HashMap<String, String>();
+    protected Map<String, String> faultMsgMap = new HashMap<String, String>();
 
     @Override
     public Invoker findInvoker(String id) {
@@ -179,7 +179,7 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
 
     protected void initFaultHandler(ApplicationContext ctx) throws Exception {
         initFaultHandler(Throwable.class.getName(), "1");
-        Resource[] resources = ctx.getResources("/exception.properties");
+        Resource[] resources = ctx.getResources("classpath*:exception.properties");
         for (Resource resource : resources) {
             if (resource.exists()) {
                 initFaultHandler(resource);
