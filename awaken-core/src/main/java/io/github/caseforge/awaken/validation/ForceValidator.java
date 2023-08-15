@@ -1,5 +1,7 @@
 package io.github.caseforge.awaken.validation;
 
-public interface ForceValidator {
+import io.github.caseforge.awaken.Validator;
+
+public interface ForceValidator extends Validator {
 
 }
