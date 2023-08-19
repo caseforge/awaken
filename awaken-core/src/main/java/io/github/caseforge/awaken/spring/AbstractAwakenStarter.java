@@ -1,5 +1,6 @@
 package io.github.caseforge.awaken.spring;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Method;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.core.io.Resource;
@@ -26,18 +28,24 @@ import io.github.caseforge.awaken.FaultHandler;
 import io.github.caseforge.awaken.FaultImpl;
 import io.github.caseforge.awaken.Invoker;
 import io.github.caseforge.awaken.InvokerBucket;
+import io.github.caseforge.awaken.ResourceProvider;
 import io.github.caseforge.awaken.annotation.Provider;
 import io.github.caseforge.awaken.annotation.Validator;
 import io.github.caseforge.awaken.core.Coder;
 import io.github.caseforge.awaken.core.InvokerRegister;
 
-public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitionRegistryPostProcessor, ApplicationListener<ContextRefreshedEvent> {
+/**
+ * 框架入口
+ */
+public abstract class AbstractAwakenStarter implements InvokerBucket, FaultHandler, ResourceProvider, ApplicationContextAware, BeanDefinitionRegistryPostProcessor, ApplicationListener<ContextRefreshedEvent> {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(AwakenStarter.class);
+    protected static final Logger LOGGER = LoggerFactory.getLogger(AbstractAwakenStarter.class);
+    
+    private static final String CLASSPATH_ALL_URL_PREFIX = "classpath*:";
 
     protected Coder coder = new Coder();
-
-    protected String[] basePackages;
+    
+    protected ApplicationContext applicationContext;
 
     protected BeanDefinitionRegistry registry;
 
@@ -61,6 +69,7 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
 
     @Override
     public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
+        LOGGER.info("Starting awaken framework ");
         this.registry = registry;
         ItfScanner itfScanner = new ItfScanner(registry, coder);
         itfScanner.scan(getBasePackages());
@@ -68,43 +77,39 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
     }
 
     @Override
+    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
+    }
+    
+    @Override
     public void onApplicationEvent(ContextRefreshedEvent event) {
         try {
 
-            ApplicationContext ctx = event.getApplicationContext();
-
-            SpringResourceProvider resourceProvider = new SpringResourceProvider(ctx);
-
-            registStaticValidator(ctx);
+            registStaticValidator(applicationContext);
             
-            registValidatorAndProvider(ctx);
+            registValidatorAndProvider(applicationContext);
 
             // 注册invoker
             Set<String> uriSet = svcMethodMap.keySet();
 
-            InvokerRegister invokerRegister = new InvokerRegister();
-            invokerRegister.setCoder(coder);
-            invokerRegister.setInvokerMap(invokerMap);
-
-            invokerRegister.setResourceProvider(resourceProvider);
+            InvokerRegister invokerRegister = new InvokerRegister(coder, this, invokerMap);
 
             for (String uri : uriSet) {
                 Method method = svcMethodMap.get(uri);
-
                 invokerRegister.regist(uri, method);
             }
 
             // 初始化异常处理
-            initFaultHandler(ctx);
+            initFaultHandler(applicationContext);
 
         } catch (Exception e) {
-            LOGGER.error("the application encountered an error after startup ", e);
+            LOGGER.error("The application encountered an error after startup ", e);
             throw new RuntimeException(e);
         }
     }
 
     protected void registStaticValidator(ApplicationContext ctx) throws Exception {
-        Resource[] resources = ctx.getResources("classpath*:validators.properties");
+        Resource[] resources = ctx.getResources(CLASSPATH_ALL_URL_PREFIX + "validators.properties");
         for (Resource resource : resources) {
             if (resource.exists()) {
                 registStaticValidator(resource);
@@ -115,6 +120,7 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
     protected void registStaticValidator(Resource resource) throws Exception {
         InputStream inputStream = null;
         try {
+            LOGGER.info("Loading validator declare from {}", resource.getURI());
             inputStream = resource.getInputStream();
             Properties props = new Properties();
             props.load(new InputStreamReader(inputStream, "utf-8"));
@@ -122,6 +128,7 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
             Set<String> validatorNames = props.stringPropertyNames();
 
             for (String validatorName : validatorNames) {
+                LOGGER.info("Regist validator {}", validatorName);
                 BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(props.getProperty(validatorName));
                 builder.setScope(BeanDefinition.SCOPE_PROTOTYPE);
                 this.registry.registerBeanDefinition(validatorName, builder.getBeanDefinition());
@@ -131,7 +138,6 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
                 inputStream.close();
             }
         }
-        
         
     }
 
@@ -163,18 +169,18 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
 
     protected void registValidator(String beanName, Method method, Validator validator) throws Exception {
         if (validator.value().trim().length() < 1) {
-            LOGGER.error("the value of annotation cannot be an empty string on method " + method.toGenericString());
-            throw new Exception("the value of annotation cannot be an empty string on method " + method.toGenericString());
+            LOGGER.error("The value of annotation cannot be an empty string on method {}", method.toGenericString());
+            throw new Exception("The value of annotation cannot be an empty string on method " + method.toGenericString());
         }
 
         if (method.getParameterCount() < 1) {
-            LOGGER.error("method " + method.toGenericString() + " must contain at least one parameter");
-            throw new Exception("method " + method.toGenericString() + " must contain at least one parameter");
+            LOGGER.error("Method {} must contain at least one parameter", method.toGenericString());
+            throw new Exception("Method " + method.toGenericString() + " must contain at least one parameter");
         }
 
         if (!method.getReturnType().equals(void.class)) {
-            LOGGER.error("method " + method.toGenericString() + " must return void type");
-            throw new Exception("method " + method.toGenericString() + " must return void type");
+            LOGGER.error("Method {} must return void type", method.toGenericString());
+            throw new Exception("Method " + method.toGenericString() + " must return void type");
         }
 
         Class<?> validatorType = coder.getValidatorType(method);
@@ -183,23 +189,26 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
         builder.setScope(BeanDefinition.SCOPE_PROTOTYPE);
         builder.addPropertyReference("refer", beanName);
 
-        this.registry.registerBeanDefinition(validator.value(), builder.getBeanDefinition());
+        String validatorName = validator.value();
+        this.registry.registerBeanDefinition(validatorName, builder.getBeanDefinition());
+        
+        LOGGER.info("Regist validator {}", validatorName);
     }
 
     protected void registProvider(String beanName, Method method, Provider provider) throws Exception {
         if (provider.value().trim().length() < 1) {
-            LOGGER.error("the value of annotation cannot be an empty string on method " + method.toGenericString());
-            throw new Exception("the value of annotation cannot be an empty string on method " + method.toGenericString());
+            LOGGER.error("The value of annotation cannot be an empty string on method {}", method.toGenericString());
+            throw new Exception("The value of annotation cannot be an empty string on method " + method.toGenericString());
         }
 
         if (method.getParameterCount() < 1) {
-            LOGGER.error("method " + method.toGenericString() + " must contain at least one parameter");
-            throw new Exception("method " + method.toGenericString() + " must contain at least one parameter");
+            LOGGER.error("Method {} must contain at least one parameter", method.toGenericString());
+            throw new Exception("Method " + method.toGenericString() + " must contain at least one parameter");
         }
 
         if (!method.getReturnType().equals(method.getParameters()[0].getType())) {
-            LOGGER.error("the return value of the method " + method.toGenericString() + " must be of the same type as the first parameter");
-            throw new Exception("the return value of the method " + method.toGenericString() + " must be of the same type as the first parameter");
+            LOGGER.error("The return value of the method {} must be of the same type as the first parameter", method.toGenericString());
+            throw new Exception("The return value of the method " + method.toGenericString() + " must be of the same type as the first parameter");
         }
 
         Class<?> providerType = coder.getProviderType(method);
@@ -208,12 +217,15 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
         builder.setScope(BeanDefinition.SCOPE_PROTOTYPE);
         builder.addPropertyReference("refer", beanName);
 
-        this.registry.registerBeanDefinition(provider.value(), builder.getBeanDefinition());
+        String providerName = provider.value();
+        this.registry.registerBeanDefinition(providerName, builder.getBeanDefinition());
+        
+        LOGGER.info("Regist provider {}", providerName);
     }
 
     protected void initFaultHandler(ApplicationContext ctx) throws Exception {
         initFaultHandler(Throwable.class.getName(), "1");
-        Resource[] resources = ctx.getResources("classpath*:exception.properties");
+        Resource[] resources = ctx.getResources(CLASSPATH_ALL_URL_PREFIX + "exception.properties");
         for (Resource resource : resources) {
             if (resource.exists()) {
                 initFaultHandler(resource);
@@ -224,6 +236,7 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
     protected void initFaultHandler(Resource resource) throws Exception {
         InputStream inputStream = null;
         try {
+            LOGGER.info("Loading exception declare from {}", resource.getURI());
             inputStream = resource.getInputStream();
             Properties props = new Properties();
             props.load(new InputStreamReader(inputStream, "utf-8"));
@@ -292,12 +305,39 @@ public class AwakenStarter implements InvokerBucket, FaultHandler, BeanDefinitio
         return faultImpl;
     }
 
-    public String[] getBasePackages() {
-        return basePackages;
+    @Override
+    public Object getBean(String name) throws Exception {
+        return this.applicationContext.getBean(name);
     }
 
-    public void setBasePackages(String[] basePackages) {
-        this.basePackages = basePackages;
+    @Override
+    public byte[] getResource(String uri) throws Exception {
+        Resource[] resources = applicationContext.getResources(CLASSPATH_ALL_URL_PREFIX + uri);
+        
+        if (resources == null || resources.length < 1) {
+            return null;
+        }
+        if (!resources[0].exists()) {
+            return null;
+        }
+
+        InputStream inputStream = resources[0].getInputStream();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            byte[] bs = new byte[512];
+            int len = 0;
+            while ((len = inputStream.read(bs)) > -1) {
+                baos.write(bs, 0, len);
+            }
+        } finally {
+            if (inputStream != null) {
+                inputStream.close();
+            }
+        }
+
+        return baos.toByteArray();
     }
+
+    public abstract String[] getBasePackages();
 
 }

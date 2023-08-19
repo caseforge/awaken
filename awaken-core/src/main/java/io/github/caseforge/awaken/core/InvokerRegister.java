@@ -4,6 +4,9 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -17,6 +20,8 @@ import io.github.caseforge.awaken.validation.ValidationBuilder;
 
 public class InvokerRegister {
 
+    protected static final Logger LOGGER = LoggerFactory.getLogger(InvokerRegister.class);
+    
     private Map<String, Invoker> invokerMap;
 
     private ResourceProvider resourceProvider;
@@ -25,10 +30,22 @@ public class InvokerRegister {
 
     private Gson gson = new Gson();
 
+    public InvokerRegister() {
+        
+    }
+    
+    public InvokerRegister(Coder coder, ResourceProvider resourceProvider, Map<String, Invoker> invokerMap) {
+        super();
+        this.coder = coder;
+        this.resourceProvider = resourceProvider;
+        this.invokerMap = invokerMap;
+    }
+
     public void regist(String uri, Method method) throws Exception {
         JsonObject publishConfig = loadPublishConfig(uri);
         
         if (publishConfig == null) {
+            LOGGER.info("No config found for [{}]", uri);
             return;
         }
         
@@ -40,12 +57,13 @@ public class InvokerRegister {
             String beanName = ruleJsonObject.get("beanName").getAsString();
             Object target = resourceProvider.getBean(beanName);
             if (target == null) {
-                throw new Exception("error in file /rules" + uri + ".json no bean found for name " + beanName);
+                throw new Exception("Error in file /rules" + uri + ".json no bean found for name " + beanName);
             }
             AbstractInvoker invoker = (AbstractInvoker) invokerType.getDeclaredConstructor().newInstance();
             invoker.setTarget(target);
             Invoker wrapInvoker = wrap(invoker, ruleJsonObject);
             invokerMap.put(uri + "@" + rule, wrapInvoker);
+            LOGGER.info("Publish [{}] by rule [{}]", uri, rule);
         }
         
     }

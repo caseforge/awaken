@@ -61,6 +61,9 @@ public class Coder extends ClassLoader {
 
     private Map<Method, String> mtp = new HashMap<Method, String>();
 
+    public Coder() {
+        super(Coder.class.getClassLoader());
+    }
     public Class<?> getProxyType(Class<?> itf) throws Exception {
         return loadClass(itf.getName() + SUFFIX_PROXY);
     }

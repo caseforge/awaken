@@ -20,8 +20,8 @@ import io.github.caseforge.awaken.core.Coder;
 
 public class ItfScanner extends ClassPathBeanDefinitionScanner {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ItfScanner.class);
-    
+    private final Logger logger = LoggerFactory.getLogger(getClass());
+
     private Coder coder;
 
     private Map<String, Method> svcMethodMap = new HashMap<String, Method>();
@@ -35,38 +35,48 @@ public class ItfScanner extends ClassPathBeanDefinitionScanner {
     protected void registerBeanDefinition(BeanDefinitionHolder definitionHolder, BeanDefinitionRegistry registry) {
         try {
             String beanClassName = definitionHolder.getBeanDefinition().getBeanClassName();
-            
-            if (LOGGER.isInfoEnabled()) {
-                LOGGER.info("loading type {} from scan", beanClassName);
+
+            if (logger.isInfoEnabled()) {
+                logger.info("Loading type {} from scan", beanClassName);
             }
-            
+
             Class<?> beanClass = Class.forName(beanClassName);
             Svc svc = beanClass.getAnnotation(Svc.class);
             SPI spi = beanClass.getAnnotation(SPI.class);
 
             if (svc != null) {
+
+                if (logger.isInfoEnabled()) {
+                    logger.info("Prepare svc {}", beanClassName);
+                }
+
                 String prefix = svc.value();
                 Method[] methods = beanClass.getMethods();
 
                 for (Method method : methods) {
                     String uri = buildUri(prefix, method.getName());
                     svcMethodMap.put(uri, method);
-                    
-                    if (LOGGER.isInfoEnabled()) {
-                        LOGGER.info("mapping uri [{}] to method {}", uri, method);
+
+                    if (logger.isInfoEnabled()) {
+                        logger.info("Mapping uri [{}] to method {}", uri, method);
                     }
                 }
             }
 
             if (spi != null) {
+
+                if (logger.isInfoEnabled()) {
+                    logger.info("Prepare spi {}", beanClassName);
+                }
+
                 String proxyHandlerName = spi.value();
-                
+
                 Class<?> proxyType = coder.getProxyType(beanClass);
-                
+
                 BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(proxyType);
                 builder.addPropertyReference("proxyHandler", proxyHandlerName);
-                
-               registry.registerBeanDefinition(definitionHolder.getBeanName(), builder.getBeanDefinition());
+
+                registry.registerBeanDefinition(definitionHolder.getBeanName(), builder.getBeanDefinition());
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
