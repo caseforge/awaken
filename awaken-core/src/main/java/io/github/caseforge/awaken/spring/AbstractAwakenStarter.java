@@ -269,7 +269,8 @@ public abstract class AbstractAwakenStarter implements InvokerBucket, FaultHandl
             currentOpObj.append(c);
         }
 
-        faultCodeMap.put(exceptionType, Integer.valueOf(codeBuilder.toString()));
+        String codeExpress = codeBuilder.toString().trim();
+        faultCodeMap.put(exceptionType, Integer.valueOf(codeExpress));
 
         if (msgBuilder != null) {
             faultMsgMap.put(exceptionType, msgBuilder.toString());
