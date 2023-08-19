@@ -7,7 +7,7 @@
 	<parent>
 		<groupId>io.github.caseforge</groupId>
 		<artifactId>awaken</artifactId>
-		<version>1.0.0</version>
+		<version>1.0.1</version>
 	</parent>
 	<artifactId>awaken-api</artifactId>
 	<name>awaken-api</name>
