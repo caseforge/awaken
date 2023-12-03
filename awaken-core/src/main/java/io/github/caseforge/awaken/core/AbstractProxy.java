@@ -7,11 +7,13 @@ import io.github.caseforge.awaken.ProxyHandler;
 
 public class AbstractProxy implements Proxy {
 
+    private String name;
+    
     private ProxyHandler proxyHandler;
     
     @Override
-    public Object handle(Method method, Object input, Class<?> responseType) throws Exception {
-        return proxyHandler.handle(method, input, responseType);
+    public Object handle(String name, Method method, Object input, Class<?> responseType) throws Exception {
+        return proxyHandler.handle(name, method, input, responseType);
     }
 
     @Override
@@ -23,5 +25,16 @@ public class AbstractProxy implements Proxy {
     public void setProxyHandler(ProxyHandler proxyHandler) {
         this.proxyHandler = proxyHandler;
     }
+
+    @Override
+    public String getName() {
+        return this.name;
+    }
+
+    @Override
+    public void setName(String name) {
+        this.name = name;
+    }
+
 
 }

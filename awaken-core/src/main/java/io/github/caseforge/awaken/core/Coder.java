@@ -45,7 +45,7 @@ import io.github.caseforge.awaken.asm.Type;
 
 public class Coder extends ClassLoader {
 
-    public static final String SUFFIX_PROXY = ".Proxy";
+    public static final String SUFFIX_PROXY = "$Proxy";
 
     public static final String SUFFIX_INVOKER = ".Invoker";
 
@@ -57,6 +57,8 @@ public class Coder extends ClassLoader {
 
     public static final String SUFFIX_VALIDATOR = ".Validator";
 
+    private static final String REFER_NAME = "@";
+
     private Map<String, Method> ptm = new HashMap<String, Method>();
 
     private Map<Method, String> mtp = new HashMap<Method, String>();
@@ -64,6 +66,7 @@ public class Coder extends ClassLoader {
     public Coder() {
         super(Coder.class.getClassLoader());
     }
+
     public Class<?> getProxyType(Class<?> itf) throws Exception {
         return loadClass(itf.getName() + SUFFIX_PROXY);
     }
@@ -113,7 +116,8 @@ public class Coder extends ClassLoader {
             } else if (name.endsWith(SUFFIX_INVOKER)) {
                 bs = dumpInvoker(pkg, method);
             } else if (name.endsWith(SUFFIX_PROXY)) {
-                bs = dumpProxy(Class.forName(pkg));
+                String proxyTypeName = name.substring(0, name.length() - SUFFIX_PROXY.length());
+                bs = dumpProxy(Class.forName(proxyTypeName));
             } else if (name.endsWith(SUFFIX_PROVIDER)) {
                 bs = dumpProvider(pkg, method);
             } else if (name.endsWith(SUFFIX_VALIDATOR)) {
@@ -121,14 +125,14 @@ public class Coder extends ClassLoader {
             } else {
                 throw new ClassNotFoundException(name);
             }
-            
+
             String dumpPath = System.getProperty("awaken.dump.path");
             if (dumpPath != null) {
                 FileOutputStream fos = null;
                 try {
                     File dir = new File(dumpPath);
                     File classFile = new File(dir, name.replace('.', '/') + ".class");
-                    
+
                     classFile.getParentFile().mkdirs();
                     fos = new FileOutputStream(classFile);
                     fos.write(bs);
@@ -280,11 +284,14 @@ public class Coder extends ClassLoader {
     }
 
     private void buildGetSet(String typeName, ClassWriter cw, Attribute attr) {
-        MethodVisitor mv;
         String fieldName = attr.getName();
         String fieldTypeDesc = attr.getDescriptor();
         String fieldSignature = attr.getSignature();
+        buildGetSet(typeName, cw, fieldName, fieldTypeDesc, fieldSignature);
+    }
 
+    private void buildGetSet(String typeName, ClassWriter cw, String fieldName, String fieldTypeDesc, String fieldSignature) {
+        MethodVisitor mv;
         // GET
         String getSignature = (fieldSignature == null) ? null : ("()" + fieldSignature);
         mv = cw.visitMethod(ACC_PUBLIC, "get" + upperFirst(fieldName), "()" + fieldTypeDesc, getSignature, null);
@@ -693,11 +700,15 @@ public class Coder extends ClassLoader {
         String returnTypeDescriptor = Type.getDescriptor(returnType);
 
         mv.visitVarInsn(ALOAD, 0);
+
+        mv.visitVarInsn(ALOAD, 0);
+        mv.visitMethodInsn(INVOKEVIRTUAL, typeName, "getName", "()Ljava/lang/String;", false);
+
         mv.visitFieldInsn(GETSTATIC, typeName, "M" + methodIndex, "Ljava/lang/reflect/Method;");
 
         mv.visitVarInsn(ALOAD, requestTypeAndIndex.getIndex());
         mv.visitLdcInsn(Type.getType(responseTypeDesc));
-        mv.visitMethodInsn(INVOKEVIRTUAL, typeName, "handle", "(Ljava/lang/reflect/Method;Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;", false);
+        mv.visitMethodInsn(INVOKEVIRTUAL, typeName, "handle", "(Ljava/lang/String;Ljava/lang/reflect/Method;Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;", false);
 
         if (Void.TYPE.equals(returnType)) {
             mv.visitInsn(POP);
@@ -720,16 +731,15 @@ public class Coder extends ClassLoader {
         String typeName = toInternalName(pkg + SUFFIX_PROVIDER);
         String superTypeName = Type.getInternalName(Object.class);
 
-        String referName = "refer";
         Class<?> referType = method.getDeclaringClass();
         String referTypeDescriptor = Type.getDescriptor(referType);
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
         MethodVisitor mv = null;
 
-        cw.visit(V1_8, ACC_PUBLIC, typeName, null, superTypeName, new String[] { Type.getInternalName(Provider.class), Type.getInternalName(Referable.class) });
+        cw.visit(V1_8, ACC_PUBLIC, typeName, null, superTypeName, new String[] { Type.getInternalName(Provider.class) });
 
-        cw.visitField(ACC_PRIVATE, referName, referTypeDescriptor, null, null).visitEnd();
+        cw.visitField(ACC_PRIVATE, REFER_NAME, referTypeDescriptor, null, null).visitEnd();
 
         Attribute[] attrs = toAttrs(method);
         int len = attrs.length;
@@ -744,27 +754,17 @@ public class Coder extends ClassLoader {
         buildConstructor(superTypeName, cw);
 
         // 生成GET SET
+        buildGetSet(typeName, cw, REFER_NAME, referTypeDescriptor, null);
+
         for (int i = 1; i < len; i++) {
             Attribute attr = attrs[i];
             buildGetSet(typeName, cw, attr);
         }
 
-        // 生成 void setRefer(Object value)方法
-        mv = cw.visitMethod(ACC_PUBLIC, "setRefer", "(Ljava/lang/Object;)V", null, null);
-        mv.visitCode();
-        mv.visitVarInsn(ALOAD, 0);
-
-        mv.visitVarInsn(ALOAD, 1);
-        mv.visitTypeInsn(CHECKCAST, Type.getInternalName(referType));
-        mv.visitFieldInsn(PUTFIELD, typeName, "refer", referTypeDescriptor);
-        mv.visitInsn(RETURN);
-        mv.visitMaxs(0, 0);
-        mv.visitEnd();
-
         mv = cw.visitMethod(ACC_PUBLIC, "provide", "(Ljava/lang/Object;)Ljava/lang/Object;", null, new String[] { "java/lang/Exception" });
         mv.visitCode();
         mv.visitVarInsn(ALOAD, 0);
-        mv.visitFieldInsn(GETFIELD, typeName, referName, referTypeDescriptor);
+        mv.visitFieldInsn(GETFIELD, typeName, REFER_NAME, referTypeDescriptor);
 
         mv.visitVarInsn(ALOAD, 1);
         unBox(attrs[0].getType(), mv);
@@ -791,16 +791,15 @@ public class Coder extends ClassLoader {
         String typeName = toInternalName(pkg + SUFFIX_VALIDATOR);
         String superTypeName = Type.getInternalName(Object.class);
 
-        String referName = "refer";
         Class<?> referType = method.getDeclaringClass();
         String referTypeDescriptor = Type.getDescriptor(referType);
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
         MethodVisitor mv = null;
 
-        cw.visit(V1_8, ACC_PUBLIC, typeName, null, superTypeName, new String[] { Type.getInternalName(Validator.class), Type.getInternalName(Referable.class) });
+        cw.visit(V1_8, ACC_PUBLIC, typeName, null, superTypeName, new String[] { Type.getInternalName(Validator.class) });
 
-        cw.visitField(ACC_PRIVATE, referName, referTypeDescriptor, null, null).visitEnd();
+        cw.visitField(ACC_PRIVATE, REFER_NAME, referTypeDescriptor, null, null).visitEnd();
 
         Attribute[] attrs = toAttrs(method);
         int len = attrs.length;
@@ -815,27 +814,17 @@ public class Coder extends ClassLoader {
         buildConstructor(superTypeName, cw);
 
         // 生成GET SET
-        for (int i = 1; i < len; i++) {
+        buildGetSet(typeName, cw, REFER_NAME, referTypeDescriptor, null);
+
+        for (int i = 0; i < len; i++) {
             Attribute attr = attrs[i];
             buildGetSet(typeName, cw, attr);
         }
 
-        // 生成 void setRefer(Object value)方法
-        mv = cw.visitMethod(ACC_PUBLIC, "setRefer", "(Ljava/lang/Object;)V", null, null);
-        mv.visitCode();
-        mv.visitVarInsn(ALOAD, 0);
-
-        mv.visitVarInsn(ALOAD, 1);
-        mv.visitTypeInsn(CHECKCAST, Type.getInternalName(referType));
-        mv.visitFieldInsn(PUTFIELD, typeName, "refer", referTypeDescriptor);
-        mv.visitInsn(RETURN);
-        mv.visitMaxs(0, 0);
-        mv.visitEnd();
-
         mv = cw.visitMethod(ACC_PUBLIC, "validate", "(Ljava/lang/Object;)V", null, new String[] { "java/lang/Exception" });
         mv.visitCode();
         mv.visitVarInsn(ALOAD, 0);
-        mv.visitFieldInsn(GETFIELD, typeName, referName, referTypeDescriptor);
+        mv.visitFieldInsn(GETFIELD, typeName, REFER_NAME, referTypeDescriptor);
 
         mv.visitVarInsn(ALOAD, 1);
         unBox(attrs[0].getType(), mv);

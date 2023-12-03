@@ -59,7 +59,16 @@ public class AssignmentBuilder {
 
         if (jsonElement instanceof JsonObject) {
             JsonObject jsonObject = (JsonObject) jsonElement;
-            String type = jsonObject.get("type").getAsString();
+            JsonElement providerTypeElement = jsonObject.get("&");
+            
+            if (providerTypeElement == null) {
+                throw new Exception("Please use & to specify the provider type in " + jsonElement);
+            }
+            
+            String type = providerTypeElement.getAsString();
+            
+            jsonObject.remove("@");
+            
             Provider bean = null;
             
             try {

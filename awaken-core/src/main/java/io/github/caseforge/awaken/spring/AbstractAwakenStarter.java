@@ -187,7 +187,7 @@ public abstract class AbstractAwakenStarter implements InvokerBucket, FaultHandl
 
         BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(validatorType);
         builder.setScope(BeanDefinition.SCOPE_PROTOTYPE);
-        builder.addPropertyReference("refer", beanName);
+        builder.addPropertyReference("@", beanName);
 
         String validatorName = validator.value();
         this.registry.registerBeanDefinition(validatorName, builder.getBeanDefinition());
@@ -215,7 +215,7 @@ public abstract class AbstractAwakenStarter implements InvokerBucket, FaultHandl
 
         BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(providerType);
         builder.setScope(BeanDefinition.SCOPE_PROTOTYPE);
-        builder.addPropertyReference("refer", beanName);
+        builder.addPropertyReference("@", beanName);
 
         String providerName = provider.value();
         this.registry.registerBeanDefinition(providerName, builder.getBeanDefinition());

@@ -8,6 +8,7 @@ import java.util.Set;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import io.github.caseforge.awaken.ResourceProvider;
@@ -56,9 +57,16 @@ public class ValidationBuilder {
         List<Validator> validators = new ArrayList<Validator>();
         for (int i = 0, len = jsonArray.size(); i < len; i++) {
             JsonObject validatorConfig = jsonArray.get(i).getAsJsonObject();
-            String type = validatorConfig.get("type").getAsString();
-            Validator bean = null;
+            JsonElement validatorTypeElement = validatorConfig.get("&");
+            
+            if (validatorTypeElement == null) {
+                throw new Exception("Please use & to specify the validator type in " + validatorConfig);
+            }
+            
+            String type = validatorTypeElement.getAsString();
 
+            Validator bean = null;
+            
             try {
                 bean = (Validator) resourceProvider.getBean(type);
             } catch (Exception e) {

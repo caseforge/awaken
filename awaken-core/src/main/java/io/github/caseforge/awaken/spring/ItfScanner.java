@@ -12,8 +12,11 @@ import org.springframework.beans.factory.config.BeanDefinitionHolder;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
+import org.springframework.core.type.ClassMetadata;
 import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.util.ClassUtils;
 
+import io.github.caseforge.awaken.annotation.Fn;
 import io.github.caseforge.awaken.annotation.SPI;
 import io.github.caseforge.awaken.annotation.Svc;
 import io.github.caseforge.awaken.core.Coder;
@@ -40,28 +43,8 @@ public class ItfScanner extends ClassPathBeanDefinitionScanner {
                 logger.info("Loading type {} from scan", beanClassName);
             }
 
-            Class<?> beanClass = Class.forName(beanClassName);
-            Svc svc = beanClass.getAnnotation(Svc.class);
+            Class<?> beanClass = ClassUtils.forName(beanClassName, ItfScanner.class.getClassLoader());
             SPI spi = beanClass.getAnnotation(SPI.class);
-
-            if (svc != null) {
-
-                if (logger.isInfoEnabled()) {
-                    logger.info("Prepare svc {}", beanClassName);
-                }
-
-                String prefix = svc.value();
-                Method[] methods = beanClass.getMethods();
-
-                for (Method method : methods) {
-                    String uri = buildUri(prefix, method.getName());
-                    svcMethodMap.put(uri, method);
-
-                    if (logger.isInfoEnabled()) {
-                        logger.info("Mapping uri [{}] to method {}", uri, method);
-                    }
-                }
-            }
 
             if (spi != null) {
 
@@ -75,6 +58,7 @@ public class ItfScanner extends ClassPathBeanDefinitionScanner {
 
                 BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(proxyType);
                 builder.addPropertyReference("proxyHandler", proxyHandlerName);
+                builder.addPropertyValue("name", definitionHolder.getBeanName());
 
                 registry.registerBeanDefinition(definitionHolder.getBeanName(), builder.getBeanDefinition());
             }
@@ -95,7 +79,50 @@ public class ItfScanner extends ClassPathBeanDefinitionScanner {
 
     @Override
     protected boolean isCandidateComponent(MetadataReader metadataReader) throws IOException {
-        return true;
+        ClassMetadata classMetadata = metadataReader.getClassMetadata();
+
+        if (!classMetadata.isInterface()) {
+            return false;
+        }
+
+        boolean hasSvcAnnotation = metadataReader.getAnnotationMetadata().hasAnnotation(Svc.class.getName());
+
+        if (hasSvcAnnotation) {
+            try {
+                String beanClassName = metadataReader.getClassMetadata().getClassName();
+                Class<?> beanClass = ClassUtils.forName(beanClassName, ItfScanner.class.getClassLoader());
+                Svc svc = beanClass.getAnnotation(Svc.class);
+
+                if (svc != null) {
+                    if (logger.isInfoEnabled()) {
+                        logger.info("Prepare svc {}", beanClassName);
+                    }
+
+                    String prefix = svc.value();
+                    Method[] methods = beanClass.getMethods();
+
+                    for (Method method : methods) {
+                        String suffix = method.getName();
+                        Fn fnAnnotation = method.getAnnotation(Fn.class);
+
+                        if (fnAnnotation != null && !"".equals(fnAnnotation.value().trim())) {
+                            suffix = fnAnnotation.value();
+                        }
+
+                        String uri = buildUri(prefix, suffix);
+                        svcMethodMap.put(uri, method);
+
+                        if (logger.isInfoEnabled()) {
+                            logger.info("Mapping uri [{}] to method {}", uri, method);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        return metadataReader.getAnnotationMetadata().hasAnnotation(SPI.class.getName());
     }
 
     @Override
